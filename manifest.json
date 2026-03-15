@@ -2,7 +2,7 @@
   "name": "精密タイマーちゃん",
   "short_name": "タイマーちゃん",
   "description": "精密タイマー",
-  "start_url": "./msec-timerclock",
+  "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#111111",
