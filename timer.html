@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>えんていくん – タイマー</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { font-family: 'Segoe UI', sans-serif; background: #111; color: #fff; }
+.big { font-size: 4.2rem; font-weight: bold; letter-spacing: 2px; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.next-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: 8px; background: #1a1a1a;
+  margin-bottom: 4px; cursor: pointer; border: 1px solid transparent;
+}
+.next-item:hover { border-color: #fbbf24; }
+.next-item.Hundred   .ni-score { color: #f87171; }
+.next-item.Quadruple .ni-score { color: #fbbf24; }
+.ni-time  { font-family: 'Courier New', monospace; font-size: 1.25rem; min-width: 80px; }
+.ni-score { font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: bold; min-width: 72px; }
+.next-list { max-height: 240px; overflow-y: auto; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+</style>
+</head>
+<body class="min-h-screen p-3">
+
+<h1 class="text-2xl font-bold text-center text-yellow-400 mb-3">えんていくん – タイマー</h1>
+
+<!-- 現在時刻 -->
+<div class="bg-black p-5 rounded-2xl text-center mb-3">
+  <div class="text-sm text-gray-400 mb-2">正確現在時刻（タップでNTP同期）</div>
+  <div id="current-time" class="big text-green-400 cursor-pointer break-all" onclick="syncNTP()">同期中...</div>
+</div>
+
+<!-- カウントダウン -->
+<div class="bg-zinc-900 p-5 rounded-2xl mb-3">
+  <div class="text-sm text-gray-400 mb-2">目標終了時刻（次の高得点をタップでセット）</div>
+  <div class="flex flex-wrap justify-center gap-3 sm:gap-6 items-end mb-4">
+    <div class="w-20 sm:w-24">
+      <label class="block text-xs text-gray-400 mb-1 text-center">時</label>
+      <input type="number" id="target-h" min="0" max="23" value="12" class="w-full bg-zinc-700 text-white p-3 rounded-xl text-4xl text-center">
+    </div>
+    <div class="text-4xl font-bold self-end">:</div>
+    <div class="w-20 sm:w-24">
+      <label class="block text-xs text-gray-400 mb-1 text-center">分</label>
+      <input type="number" id="target-m" min="0" max="59" value="0" class="w-full bg-zinc-700 text-white p-3 rounded-xl text-4xl text-center">
+    </div>
+    <div class="text-4xl font-bold self-end">:</div>
+    <div class="w-20 sm:w-24">
+      <label class="block text-xs text-gray-400 mb-1 text-center">秒</label>
+      <input type="number" id="target-s" min="0" max="59" value="0" class="w-full bg-zinc-700 text-white p-3 rounded-xl text-4xl text-center">
+    </div>
+  </div>
+  <button id="set-target" class="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-4 rounded-2xl text-xl">カウントダウン開始</button>
+  <div id="countdown" class="mt-6 text-center text-5xl font-extrabold text-red-400">残り ---- 秒</div>
+</div>
+
+<!-- 次の高得点 -->
+<div class="bg-zinc-900 p-4 rounded-2xl mb-3">
+  <div class="text-sm text-gray-400 mb-2">次の高得点（タップでセット）</div>
+  <div id="next-list" class="next-list"><div class="text-gray-500 text-sm text-center py-4">読み込み中...</div></div>
+</div>
+
+<!-- オフセット -->
+<div class="bg-zinc-800 p-6 rounded-2xl mb-3">
+  <div class="text-sm text-gray-400 mb-4">ズレ計算（正 vs 実機）</div>
+  <div class="space-y-4">
+    <div>
+      <label class="block text-sm text-gray-300 mb-2">正（理想NTP）</label>
+      <div class="grid grid-cols-3 gap-2">
+        <input type="number" id="ideal-h" min="0" max="23" placeholder="時" class="bg-zinc-700 text-white p-3 rounded-xl text-2xl text-center">
+        <input type="number" id="ideal-m" min="0" max="59" placeholder="分" class="bg-zinc-700 text-white p-3 rounded-xl text-2xl text-center">
+        <input type="number" id="ideal-s" min="0" max="59" placeholder="秒" class="bg-zinc-700 text-white p-3 rounded-xl text-2xl text-center">
+      </div>
+    </div>
+    <div>
+      <label class="block text-sm text-gray-300 mb-2">実（機種表示）</label>
+      <div class="grid grid-cols-3 gap-2">
+        <input type="number" id="machine-h" min="0" max="23" placeholder="時" class="bg-zinc-700 text-white p-3 rounded-xl text-2xl text-center">
+        <input type="number" id="machine-m" min="0" max="59" placeholder="分" class="bg-zinc-700 text-white p-3 rounded-xl text-2xl text-center">
+        <input type="number" id="machine-s" min="0" max="59" placeholder="秒" class="bg-zinc-700 text-white p-3 rounded-xl text-2xl text-center">
+      </div>
+    </div>
+  </div>
+  <button id="calc-offset" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-2xl text-xl mt-6">ズレ計算してオフセットにセット</button>
+  <div class="text-center my-4 text-lg">
+    差（実機 - 正）: <span id="offset-calc" class="font-bold text-white">---- 秒</span>
+  </div>
+  <div class="flex flex-col sm:flex-row gap-4 items-center">
+    <input type="number" id="offset-input" value="0" step="1" class="w-full sm:flex-1 bg-zinc-700 text-white p-4 rounded-2xl text-4xl text-center">
+    <button id="apply-offset" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 px-8 py-4 rounded-2xl text-xl font-bold">適用</button>
+  </div>
+  <div class="text-center mt-4 text-sm text-gray-400">
+    現在オフセット: <span id="current-offset" class="text-white font-bold">0</span> 秒
+  </div>
+  <button id="save-offset" class="mt-4 w-full bg-green-600 hover:bg-green-700 py-3 rounded-2xl">保存（次回も継続）</button>
+</div>
+
+<script>
+const API = 'https://entei-chan.onrender.com';
+const TIME_LIMIT = 14400;
+
+// ── msec-timerclock のコアロジックをそのまま使用 ──
+let baseNTP = 0;
+let basePerf = 0;
+let offset = parseFloat(localStorage.getItem('damOffset')) || 0;
+let targetUnix = null;
+
+document.getElementById('current-offset').textContent = offset;
+document.getElementById('offset-input').value = offset;
+
+async function syncNTP() {
+  try {
+    const start = performance.now();
+    const res = await fetch("https://www.timeapi.io/api/Time/current/zone?timeZone=Asia/Tokyo");
+    if (!res.ok) throw new Error("API応答エラー: " + res.status);
+    const data = await res.json();
+    if (!data.dateTime) throw new Error("dateTime フィールドが見つかりません");
+    const serverDate = new Date(data.dateTime);
+    if (isNaN(serverDate.getTime())) throw new Error("dateTime パース失敗");
+    const serverUnixMs = serverDate.getTime();
+    const latencyMs = (performance.now() - start) / 2;
+    baseNTP = (serverUnixMs / 1000) + (latencyMs / 1000);
+    basePerf = performance.now();
+    alert("NTP同期完了！（遅延補正済み）");
+  } catch (e) {
+    console.error("同期失敗:", e);
+    alert("同期に失敗しました。端末時計を使います。");
+  }
+}
+
+function getCurrentTime() {
+  if (basePerf === 0) return Date.now() / 1000 + offset;
+  return baseNTP + (performance.now() - basePerf) / 1000 + offset;
+}
+
+// 時計表示（msec-timerclockと同じ20ms間隔）
+function updateDisplay() {
+  const sec = getCurrentTime();
+  const d = new Date(sec * 1000);
+  document.getElementById('current-time').textContent =
+    d.getHours().toString().padStart(2,'0') + ':' +
+    d.getMinutes().toString().padStart(2,'0') + ':' +
+    d.getSeconds().toString().padStart(2,'0') + '.' +
+    d.getMilliseconds().toString().padStart(3,'0');
+}
+setInterval(updateDisplay, 20);
+
+// カウントダウン（msec-timerclockと同じ37ms間隔）
+function updateCountdown() {
+  if (!targetUnix) {
+    document.getElementById('countdown').textContent = "残り ---- 秒";
+    return;
+  }
+  const rem = targetUnix - getCurrentTime();
+  if (rem <= 0) {
+    document.getElementById('countdown').textContent = "0.000 秒 （終了）";
+    document.getElementById('countdown').classList.add('text-yellow-400');
+  } else {
+    const s = Math.floor(rem);
+    const ms = Math.floor((rem - s) * 1000).toString().padStart(3,'0');
+    document.getElementById('countdown').textContent = `${s}.${ms} 秒`;
+  }
+}
+setInterval(updateCountdown, 37);
+
+// カウントダウン開始ボタン（msec-timerclockと同じロジック）
+document.getElementById('set-target').addEventListener('click', () => {
+  const h = parseInt(document.getElementById('target-h').value) || 0;
+  const m = parseInt(document.getElementById('target-m').value) || 0;
+  const s = parseInt(document.getElementById('target-s').value) || 0;
+  if (h > 23 || m > 59 || s > 59) return alert("入力範囲を確認してください");
+  const nowSec = getCurrentTime();
+  const nowD = new Date(nowSec * 1000);
+  let targetD = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate(), h, m, s, 0);
+  if (targetD.getTime() / 1000 < nowSec) {
+    targetD.setDate(targetD.getDate() + 1);
+  }
+  targetUnix = targetD.getTime() / 1000;
+  document.getElementById('countdown').classList.remove('text-yellow-400');
+});
+
+// オフセット（msec-timerclockと同じロジック）
+document.getElementById('calc-offset').addEventListener('click', () => {
+  const ih = parseInt(document.getElementById('ideal-h').value) || 0;
+  const im = parseInt(document.getElementById('ideal-m').value) || 0;
+  const iss = parseInt(document.getElementById('ideal-s').value) || 0;
+  const mh = parseInt(document.getElementById('machine-h').value) || 0;
+  const mm = parseInt(document.getElementById('machine-m').value) || 0;
+  const ms = parseInt(document.getElementById('machine-s').value) || 0;
+  const base = new Date(getCurrentTime() * 1000);
+  const ideal = new Date(base.getFullYear(), base.getMonth(), base.getDate(), ih, im, iss);
+  const machine = new Date(base.getFullYear(), base.getMonth(), base.getDate(), mh, mm, ms);
+  const diff = (machine.getTime() - ideal.getTime()) / 1000;
+  document.getElementById('offset-calc').textContent = (diff >= 0 ? '+' : '') + diff.toFixed(0) + " 秒";
+  document.getElementById('offset-input').value = diff.toFixed(0);
+});
+
+document.getElementById('apply-offset').addEventListener('click', () => {
+  offset = parseFloat(document.getElementById('offset-input').value) || 0;
+  document.getElementById('current-offset').textContent = offset.toFixed(0);
+});
+
+document.getElementById('save-offset').addEventListener('click', () => {
+  offset = parseFloat(document.getElementById('offset-input').value) || 0;
+  document.getElementById('current-offset').textContent = offset.toFixed(0);
+  localStorage.setItem('damOffset', offset);
+  alert("保存完了");
+});
+
+// ── 次の高得点リスト（タップで時刻入力欄にセット） ──
+let highScores = [], prevNextKeys = '';
+
+function toUnix(iso){ return new Date(iso).getTime() / 1000; }
+function fmtTime(iso){
+  const d = new Date(iso);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map(v => String(v).padStart(2,'0')).join(':');
+}
+
+function setTargetFromList(h, m, s) {
+  document.getElementById('target-h').value = h;
+  document.getElementById('target-m').value = m;
+  document.getElementById('target-s').value = s;
+  // 自動でカウントダウン開始
+  document.getElementById('set-target').click();
+}
+
+const nextListEl = document.getElementById('next-list');
+function renderNextList() {
+  const now = getCurrentTime();
+  const items = highScores.filter(s => toUnix(s.time) > now).slice(0, 8);
+  const key = items.map(s => s.time).join(',');
+  if (key === prevNextKeys) return;
+  prevNextKeys = key;
+  if (!items.length) { nextListEl.innerHTML = '<div class="text-gray-500 text-sm text-center py-4">データなし</div>'; return; }
+  nextListEl.innerHTML = items.map(s => {
+    const d = new Date(s.time);
+    const h = d.getHours(), m = d.getMinutes(), sc = d.getSeconds();
+    return `<div class="next-item ${s.scoreType}" onclick="setTargetFromList(${h},${m},${sc})">
+      <span class="ni-time">${fmtTime(s.time)}</span>
+      <span class="ni-score">${s.scoreString}</span>
+    </div>`;
+  }).join('');
+}
+setInterval(renderNextList, 1000);
+
+async function fetchHighScores(){
+  try{
+    const r = await fetch(`${API}/_score_predictions?timeLimit=${TIME_LIMIT}`);
+    const d = await r.json();
+    highScores = d.scorePredictions || [];
+    prevNextKeys = '';
+  } catch(e){ console.error(e); }
+}
+setInterval(fetchHighScores, 60000);
+
+syncNTP();
+fetchHighScores();
+</script>
+</body>
+</html>

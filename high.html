@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高得点</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background: #111; color: #fff; }
+  .mono { font-family: 'Courier New', monospace; }
+  .score-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 8px;
+    background: #1a1a1a; margin-bottom: 4px;
+  }
+  .score-row.Hundred   { border-left: 4px solid #f87171; }
+  .score-row.Quadruple { border-left: 4px solid #fbbf24; }
+  .sr-time  { font-family: 'Courier New', monospace; font-size: 1.25rem; min-width: 80px; }
+  .sr-score { font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: bold; min-width: 72px; }
+  .score-row.Hundred   .sr-score { color: #f87171; }
+  .score-row.Quadruple .sr-score { color: #fbbf24; }
+  .sr-remain { font-size: 0.78rem; color: #9ca3af; margin-left: auto; font-family: 'Courier New', monospace; }
+  .score-list { max-height: calc(100vh - 100px); overflow-y: auto; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+</style>
+</head>
+<body class="min-h-screen p-3">
+
+<h1 class="text-2xl font-bold text-center text-yellow-400 mb-3">えんていくん – 高得点</h1>
+
+<div class="flex items-center gap-3 mb-3">
+  <button id="pause-btn" onclick="togglePause()"
+          class="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded-xl text-sm font-bold">⏸ 一時停止</button>
+  <span id="status" class="text-xs text-gray-500">自動更新中</span>
+</div>
+
+<div class="score-list" id="score-list"></div>
+
+<script>
+const API = 'https://entei-chan.onrender.com';
+const TIME_LIMIT = 14400;
+
+let scores = [], paused = false, prevKey = '';
+
+function toUnix(iso){ return new Date(iso).getTime()/1000; }
+function fmtTime(iso){
+  const d=new Date(iso);
+  return [d.getHours(),d.getMinutes(),d.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
+}
+function getNow(){ return Date.now()/1000; }
+function remainStr(unix){
+  const rem=unix-getNow();
+  if(rem<0) return '経過';
+  if(rem<60) return `${Math.floor(rem)}秒後`;
+  return `${Math.floor(rem/60)}分${String(Math.floor(rem%60)).padStart(2,'0')}秒後`;
+}
+
+const listEl = document.getElementById('score-list');
+function renderList(){
+  if(paused) return;
+  const now=getNow();
+  const items=scores.filter(s=>toUnix(s.time)>now);
+  const key=items.map(s=>s.time).join(',');
+  if(key===prevKey){
+    listEl.querySelectorAll('.sr-remain').forEach((span,i)=>{ if(items[i]) span.textContent=remainStr(toUnix(items[i].time)); });
+    return;
+  }
+  prevKey=key;
+  if(!items.length){ listEl.innerHTML='<div class="text-gray-500 text-sm text-center py-8">表示中のデータなし</div>'; return; }
+  listEl.innerHTML=items.map(s=>`<div class="score-row ${s.scoreType}">
+    <span class="sr-time">${fmtTime(s.time)}</span>
+    <span class="sr-score">${s.scoreString}</span>
+    <span class="sr-remain">${remainStr(toUnix(s.time))}</span>
+  </div>`).join('');
+}
+setInterval(renderList, 1000);
+
+function togglePause(){
+  paused=!paused;
+  const btn=document.getElementById('pause-btn');
+  btn.textContent=paused?'▶ 再開':'⏸ 一時停止';
+  btn.className=paused
+    ?'bg-yellow-600 hover:bg-yellow-500 text-black px-4 py-2 rounded-xl text-sm font-bold'
+    :'bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded-xl text-sm font-bold';
+  document.getElementById('status').textContent=paused?'一時停止中':'自動更新中';
+  if(!paused){ prevKey=''; }
+}
+
+async function fetchScores(){
+  try{
+    const r=await fetch(`${API}/_score_predictions?timeLimit=${TIME_LIMIT}`);
+    const d=await r.json();
+    scores=d.scorePredictions||[];
+    prevKey='';
+  }catch(e){ console.error(e); }
+}
+setInterval(fetchScores, 60000);
+fetchScores();
+</script>
+</body>
+</html>
