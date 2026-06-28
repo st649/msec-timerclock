@@ -112,9 +112,10 @@ function calcOffset() {
 
   const idealT = toUnix(match.time);
   const diff = checkT - idealT;
+  const diffInt = Math.trunc(diff);
 
   matchedTime = match.time;
-  document.getElementById('offset-value').textContent = (diff >= 0 ? '+' : '') + diff.toFixed(0);
+  document.getElementById('offset-value').textContent = (diffInt === 0 ? '±0' : (diffInt > 0 ? '+' : '') + diffInt);
   document.getElementById('offset-detail').textContent =
     `確認 ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')} に ${scoreStr} → 理想 ${fmtTime(match.time)}`;
   document.getElementById('offset-result').classList.remove('hidden');
