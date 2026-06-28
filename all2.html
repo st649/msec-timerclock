@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>えんていくん – 全表示</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; background: #111; color: #fff; }
+  .score-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; border-radius: 8px;
+    background: #1a1a1a; margin-bottom: 4px;
+  }
+  .score-row.Hundred   { border-left: 4px solid #f87171; }
+  .score-row.Quadruple { border-left: 4px solid #fbbf24; }
+  .score-row.Normal    { border-left: 4px solid #6b7280; }
+  .score-row.past      { opacity: 0.45; }
+  .score-row.matched   { outline: 2px solid #facc15; }
+  .sr-time  { font-family: 'Courier New', monospace; font-size: 1.25rem; min-width: 80px; }
+  .sr-score { font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: bold; min-width: 72px; }
+  .score-row.Hundred   .sr-score { color: #f87171; }
+  .score-row.Quadruple .sr-score { color: #fbbf24; }
+  .score-row.Normal    .sr-score { color: #d1d5db; }
+  .sr-remain { font-size: 0.78rem; color: #9ca3af; margin-left: auto; font-family: 'Courier New', monospace; }
+  .score-list { max-height: calc(100vh - 280px); overflow-y: auto; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+</style>
+</head>
+<body class="min-h-screen p-3">
+
+<h1 class="text-2xl font-bold text-center text-yellow-400 mb-3">えんていくん – 全表示</h1>
+
+<!-- オフセット計算 -->
+<div class="bg-zinc-800 p-4 rounded-2xl mb-3">
+  <div class="text-sm text-gray-300 mb-3">ズレ確認</div>
+  <div class="grid grid-cols-3 gap-2 mb-2">
+    <div><div class="text-xs text-gray-500 text-center mb-1">確認・時</div>
+      <input type="number" id="check-h" min="0" max="23" placeholder="時" class="w-full bg-zinc-700 text-white p-2 rounded-lg text-xl text-center border border-zinc-600"></div>
+    <div><div class="text-xs text-gray-500 text-center mb-1">確認・分</div>
+      <input type="number" id="check-m" min="0" max="59" placeholder="分" class="w-full bg-zinc-700 text-white p-2 rounded-lg text-xl text-center border border-zinc-600"></div>
+    <div><div class="text-xs text-gray-500 text-center mb-1">確認・秒</div>
+      <input type="number" id="check-s" min="0" max="59" placeholder="秒" class="w-full bg-zinc-700 text-white p-2 rounded-lg text-xl text-center border border-zinc-600"></div>
+  </div>
+  <div><div class="text-xs text-gray-500 mb-1">その時実機に出ていた点数</div>
+    <input type="text" id="check-score" placeholder="例: 99.994" class="w-full bg-zinc-700 text-white p-3 rounded-lg text-xl text-center border border-zinc-600 font-mono"></div>
+  <button onclick="calcOffset()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl mt-3">ズレを計算</button>
+  <div id="offset-result" class="text-center mt-3 text-lg hidden">
+    ズレ: <span id="offset-value" class="font-bold text-white text-2xl"></span> 秒
+    <div id="offset-detail" class="text-xs text-gray-500 mt-1"></div>
+  </div>
+</div>
+
+<!-- 一時停止 -->
+<div class="flex items-center gap-3 mb-3">
+  <button id="pause-btn" onclick="togglePause()"
+          class="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded-xl text-sm font-bold">⏸ 一時停止</button>
+  <span id="status" class="text-xs text-gray-500">自動更新中（±10分表示）</span>
+</div>
+
+<div class="score-list" id="score-list"></div>
+
+<script>
+const API = 'https://entei-chan.onrender.com';
+const TIME_LIMIT = 14400;
+const WINDOW_SEC = 600; // ±10分
+
+let scores = [], paused = false, prevKey = '', matchedTime = '';
+
+function toUnix(iso){ return new Date(iso).getTime()/1000; }
+function fmtTime(iso){
+  const d=new Date(iso);
+  return [d.getHours(),d.getMinutes(),d.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
+}
+function getNow(){ return Date.now()/1000; }
+function remainStr(unix){
+  const rem=unix-getNow();
+  if(rem<-60) return `${Math.abs(Math.floor(rem/60))}分${String(Math.abs(Math.floor(rem%60))).padStart(2,'0')}秒前`;
+  if(rem<0) return `${Math.abs(Math.floor(rem))}秒前`;
+  if(rem<60) return `${Math.floor(rem)}秒後`;
+  return `${Math.floor(rem/60)}分${String(Math.floor(rem%60)).padStart(2,'0')}秒後`;
+}
+
+// ズレ計算（確認時刻に最も近い同点数のエントリを選ぶ）
+function calcOffset() {
+  const h = parseInt(document.getElementById('check-h').value);
+  const m = parseInt(document.getElementById('check-m').value);
+  const s = parseInt(document.getElementById('check-s').value);
+  const scoreStr = document.getElementById('check-score').value.trim();
+
+  if (isNaN(h) || isNaN(m) || isNaN(s) || !scoreStr) {
+    alert("時刻と点数を入力してください");
+    return;
+  }
+
+  const base = new Date(getNow() * 1000);
+  const checkT = new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m, s).getTime() / 1000;
+
+  // 同じ点数のエントリから確認時刻に最も近いものを選ぶ
+  const candidates = scores.filter(sc =>
+  sc.scoreString === scoreStr &&
+  Math.abs(toUnix(sc.time) - checkT) <= WINDOW_SEC
+);
+  if (!candidates.length) {
+    alert(`「${scoreStr}」が一覧に見つかりません。\n点数の表記を確認してください（例: 99.994）`);
+    return;
+  }
+  const match = candidates.reduce((best, cur) =>
+    Math.abs(toUnix(cur.time) - checkT) < Math.abs(toUnix(best.time) - checkT) ? cur : best
+  );
+
+  const idealT = toUnix(match.time);
+  const diff = checkT - idealT;
+
+  matchedTime = match.time;
+  document.getElementById('offset-value').textContent = (diff >= 0 ? '+' : '') + diff.toFixed(0);
+  document.getElementById('offset-detail').textContent =
+    `確認 ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')} に ${scoreStr} → 理想 ${fmtTime(match.time)}`;
+  document.getElementById('offset-result').classList.remove('hidden');
+
+  // 一致行をハイライトするため再描画
+  prevKey = '';
+  renderList();
+}
+
+const listEl = document.getElementById('score-list');
+function renderList(){
+  if(paused) return;
+  const now = getNow();
+  // 過去10分〜未来10分
+  const items = scores.filter(s => {
+    const u = toUnix(s.time);
+    return u >= now - WINDOW_SEC && u <= now + WINDOW_SEC;
+  });
+  const key = items.map(s=>s.time).join(',') + matchedTime;
+  if(key === prevKey){
+    // 残り時間だけ更新
+    listEl.querySelectorAll('.sr-remain').forEach((span,i)=>{ if(items[i]) span.textContent=remainStr(toUnix(items[i].time)); });
+    return;
+  }
+  prevKey = key;
+  if(!items.length){ listEl.innerHTML='<div class="text-gray-500 text-sm text-center py-8">表示中のデータなし</div>'; return; }
+  listEl.innerHTML = items.map(s => {
+    const unix = toUnix(s.time);
+    const isPast = unix < now;
+    const isMatch = s.time === matchedTime;
+    return `<div class="score-row ${s.scoreType}${isPast?' past':''}${isMatch?' matched':''}">
+      <span class="sr-time">${fmtTime(s.time)}</span>
+      <span class="sr-score">${s.scoreString}</span>
+      <span class="sr-remain">${remainStr(unix)}</span>
+    </div>`;
+  }).join('');
+
+  // マッチした行にスクロール
+  if(matchedTime){
+    const idx = items.findIndex(s => s.time === matchedTime);
+    if(idx >= 0){
+      const rows = listEl.querySelectorAll('.score-row');
+      if(rows[idx]) rows[idx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+}
+setInterval(renderList, 1000);
+
+function togglePause(){
+  paused=!paused;
+  const btn=document.getElementById('pause-btn');
+  btn.textContent=paused?'▶ 再開':'⏸ 一時停止';
+  btn.className=paused
+    ?'bg-yellow-600 hover:bg-yellow-500 text-black px-4 py-2 rounded-xl text-sm font-bold'
+    :'bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded-xl text-sm font-bold';
+  document.getElementById('status').textContent=paused?'一時停止中':'自動更新中（±10分表示）';
+  if(!paused){ prevKey=''; }
+}
+
+async function fetchScores(){
+  try{
+    const r=await fetch(`${API}/_score_predictions?includeNormal=true&includeQuadruple=true&include100=true&timeLimit=${TIME_LIMIT}`);
+    const d=await r.json();
+    scores=d.scorePredictions||[];
+    prevKey='';
+  }catch(e){ console.error(e); }
+}
+setInterval(fetchScores, 60000);
+fetchScores();
+</script>
+</body>
+</html>
