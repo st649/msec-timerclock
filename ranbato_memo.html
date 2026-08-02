@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ランバトメモ</title>
+  <style>
+    :root {
+      --bg-color: #f4f6f8;
+      --card-bg-default: #ffffff;
+      --card-bg-sung: #e3f2fd; /* 歌った時の薄青色 */
+      --border-sung: #90caf9;
+      --primary: #1976d2;
+      --text: #333333;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text);
+      padding: 12px;
+      padding-bottom: 80px; /* 下部ボタン用の余白 */
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    /* 検索・フィルターエリア */
+    .controls {
+      position: sticky;
+      top: 0;
+      background-color: var(--bg-color);
+      padding-bottom: 10px;
+      z-index: 10;
+    }
+
+    .search-bar {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px; /* スマホで自動ズームしないサイズ */
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+
+    .filter-buttons {
+      display: flex;
+      gap: 6px;
+    }
+
+    .filter-btn {
+      flex: 1;
+      padding: 8px 4px;
+      font-size: 0.85rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background-color: #fff;
+      cursor: pointer;
+    }
+
+    .filter-btn.active {
+      background-color: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+
+    /* 曲リスト */
+    .song-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .song-card {
+      background-color: var(--card-bg-default);
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background-color 0.2s, border-color 0.2s;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* 歌った時のスタイル（薄青） */
+    .song-card.sung {
+      background-color: var(--card-bg-sung);
+      border-color: var(--border-sung);
+    }
+
+    .song-info {
+      flex: 1;
+      margin-right: 10px;
+      word-break: break-all;
+    }
+
+    .song-title {
+      font-weight: bold;
+      font-size: 1rem;
+      margin-bottom: 4px;
+    }
+
+    .song-meta {
+      font-size: 0.85rem;
+      color: #666;
+    }
+
+    .button-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dam-btn {
+      display: inline-block;
+      padding: 8px 10px;
+      background-color: #000;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .delete-btn {
+      padding: 6px 8px;
+      background-color: #ffebeb;
+      color: #d32f2f;
+      border: 1px solid #ffcdd2;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    /* フッターアクション */
+    .action-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background-color: #fff;
+      border-top: 1px solid #ddd;
+      padding: 10px 16px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-action {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .btn-add { background-color: var(--primary); color: white; }
+    .btn-reset { background-color: #e0e0e0; color: #333; }
+    .btn-import { background-color: #4caf50; color: white; }
+
+    /* モーダル */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+
+    .modal.open { display: flex; }
+
+    .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .modal-content h2 { font-size: 1.1rem; margin-bottom: 12px; }
+    .modal-content input, .modal-content textarea {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🎤 DAM ランバトメモ</h1>
+
+  <div class="controls">
+    <input type="text" id="searchInput" class="search-bar" placeholder="曲名やリクエストNoで検索...">
+    <div class="filter-buttons">
+      <button class="filter-btn active" onclick="setFilter('all')">すべて</button>
+      <button class="filter-btn" onclick="setFilter('unsung')">未歌唱</button>
+      <button class="filter-btn" onclick="setFilter('sung')">歌唱済</button>
+    </div>
+  </div>
+
+  <div id="songList" class="song-list"></div>
+
+  <!-- 固定フッターボタン -->
+  <div class="action-bar">
+    <button class="btn-action btn-add" onclick="openAddModal()">＋ 曲を追加</button>
+    <button class="btn-action btn-reset" onclick="resetAllSung()">全解除</button>
+    <button class="btn-action btn-import" onclick="openImportModal()">一括データ登録</button>
+  </div>
+
+  <!-- 曲追加モーダル -->
+  <div id="addModal" class="modal">
+    <div class="modal-content">
+      <h2>曲を追加</h2>
+      <input type="text" id="newTitle" placeholder="曲名 (例: sky-version 2008-)">
+      <input type="text" id="newReqNo" placeholder="リクエストNo (例: 3809-47)">
+      <div class="modal-buttons">
+        <button class="btn-action btn-reset" onclick="closeModal('addModal')">キャンセル</button>
+        <button class="btn-action btn-add" onclick="addSong()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- スプレッドシートからの貼り付けモーダル -->
+  <div id="importModal" class="modal">
+    <div class="modal-content">
+      <h2>スプレッドシートから一括登録</h2>
+      <p style="font-size:0.75rem; color:#666; margin-bottom:8px;">
+        スプレッドシートの範囲をコピーしてそのまま貼り付けてください。
+      </p>
+      <textarea id="importText" rows="6" placeholder="コピーしたテキストを貼り付け..."></textarea>
+      <div class="modal-buttons">
+        <button class="btn-action btn-reset" onclick="closeModal('importModal')">キャンセル</button>
+        <button class="btn-action btn-import" onclick="processImport()">取り込み</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 初期サンプルデータ
+    const initialSongs = [
+      { id: '1', title: 'sky-version 2008-', reqNo: '3809-47', sung: false },
+      { id: '2', title: 'only my railgun', reqNo: '3343-56', sung: false },
+      { id: '3', title: 'まかせて★スプラッシュ☆', reqNo: '1350-40', sung: false },
+      { id: '4', title: 'COCORO◆Diamond', reqNo: '3667-72', sung: false },
+      { id: '5', title: 'DANZEN!ふたりはプリキュア', reqNo: '1110-23', sung: false }
+    ];
+
+    let songs = JSON.parse(localStorage.getItem('dam_songs')) || initialSongs;
+    let currentFilter = 'all';
+
+    function saveSongs() {
+      localStorage.setItem('dam_songs', JSON.stringify(songs));
+      render();
+    }
+
+    function toggleSung(id, event) {
+      // ボタン類がクリックされた時はカード全体のトグルイベントを発火させない
+      if (event.target.closest('.button-group')) return;
+      
+      const song = songs.find(s => s.id === id);
+      if (song) {
+        song.sung = !song.sung;
+        saveSongs();
+      }
+    }
+
+    function deleteSong(id, title) {
+      if (confirm(`「${title}」をリストから削除しますか？`)) {
+        songs = songs.filter(s => s.id !== id);
+        saveSongs();
+      }
+    }
+
+    function setFilter(filter) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      render();
+    }
+
+    function render() {
+      const listEl = document.getElementById('songList');
+      const searchVal = document.getElementById('searchInput').value.toLowerCase();
+      listEl.innerHTML = '';
+
+      const filtered = songs.filter(song => {
+        const matchesFilter = 
+          currentFilter === 'all' ? true :
+          currentFilter === 'sung' ? song.sung : !song.sung;
+        
+        const matchesSearch = 
+          song.title.toLowerCase().includes(searchVal) || 
+          song.reqNo.toLowerCase().includes(searchVal);
+
+        return matchesFilter && matchesSearch;
+      });
+
+      filtered.forEach(song => {
+        const url = `https://www.clubdam.com/app/rankingbattle/Ranking.do?requestNo=${song.reqNo}`;
+        const card = document.createElement('div');
+        card.className = `song-card ${song.sung ? 'sung' : ''}`;
+        card.onclick = (e) => toggleSung(song.id, e);
+
+        card.innerHTML = `
+          <div class="song-info">
+            <div class="song-title">${escapeHtml(song.title)}</div>
+            <div class="song-meta">No. ${escapeHtml(song.reqNo)}</div>
+          </div>
+          <div class="button-group">
+            <a href="${url}" target="_blank" class="dam-btn">DAM 🔗</a>
+            <button class="delete-btn" onclick="deleteSong('${song.id}', '${escapeHtml(song.title)}')">削除</button>
+          </div>
+        `;
+        listEl.appendChild(card);
+      });
+    }
+
+    function openAddModal() { document.getElementById('addModal').classList.add('open'); }
+    function openImportModal() { document.getElementById('importModal').classList.add('open'); }
+    function closeModal(id) { document.getElementById('addModal').classList.remove('open'); document.getElementById('importModal').classList.remove('open'); }
+
+    function addSong() {
+      const title = document.getElementById('newTitle').value.trim();
+      let reqNo = document.getElementById('newReqNo').value.trim();
+      if (!title) return alert('曲名を入力してください');
+
+      if (reqNo.includes('requestNo=')) {
+        reqNo = reqNo.split('requestNo=')[1].split('&')[0];
+      }
+
+      songs.push({ id: Date.now().toString(), title, reqNo, sung: false });
+      saveSongs();
+      document.getElementById('newTitle').value = '';
+      document.getElementById('newReqNo').value = '';
+      closeModal('addModal');
+    }
+
+    function processImport() {
+      const text = document.getElementById('importText').value;
+      if (!text.trim()) return;
+
+      const lines = text.split('\n');
+      let addedCount = 0;
+
+      lines.forEach(line => {
+        const parts = line.split('\t');
+        if (parts.length >= 1) {
+          let title = '';
+          let reqNo = '';
+
+          parts.forEach(part => {
+            const p = part.trim();
+            if (p.includes('requestNo=')) {
+              reqNo = p.split('requestNo=')[1].split('&')[0];
+            } else if (/^\d{4}-\d{2}$/.test(p)) {
+              reqNo = p;
+            } else if (p && p !== '100' && !title) {
+              title = p;
+            }
+          });
+
+          if (title) {
+            songs.push({ id: Date.now().toString() + Math.random(), title, reqNo, sung: false });
+            addedCount++;
+          }
+        }
+      });
+
+      saveSongs();
+      document.getElementById('importText').value = '';
+      closeModal('importModal');
+      alert(`${addedCount} 件の曲を追加しました！`);
+    }
+
+    function resetAllSung() {
+      if (confirm('すべての曲の「歌った」チェックを解除しますか？')) {
+        songs.forEach(s => s.sung = false);
+        saveSongs();
+      }
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    document.getElementById('searchInput').addEventListener('input', render);
+    
+    render();
+  </script>
+</body>
+</html>
