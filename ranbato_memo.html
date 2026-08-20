@@ -218,9 +218,9 @@
   <div class="controls">
     <input type="text" id="searchInput" class="search-bar" placeholder="曲名やリクエストNoで検索...">
     <div class="filter-buttons">
-      <button class="filter-btn active" onclick="setFilter('all')">すべて</button>
-      <button class="filter-btn" onclick="setFilter('unsung')">未歌唱</button>
-      <button class="filter-btn" onclick="setFilter('sung')">歌唱済</button>
+  <button class="filter-btn active" onclick="setFilter('all', event)">すべて (<span id="countAll">0</span>)</button>
+  <button class="filter-btn" onclick="setFilter('unsung', event)">未歌唱 (<span id="countUnsung">0</span>)</button>
+  <button class="filter-btn" onclick="setFilter('sung', event)">歌唱済 (<span id="countSung">0</span>)</button>
     </div>
   </div>
 
@@ -305,41 +305,54 @@
     }
 
     function render() {
-      const listEl = document.getElementById('songList');
-      const searchVal = document.getElementById('searchInput').value.toLowerCase();
-      listEl.innerHTML = '';
+  const listEl = document.getElementById('songList');
+  const searchVal = document.getElementById('searchInput').value.toLowerCase();
+  listEl.innerHTML = '';
 
-      const filtered = songs.filter(song => {
-        const matchesFilter = 
-          currentFilter === 'all' ? true :
-          currentFilter === 'sung' ? song.sung : !song.sung;
-        
-        const matchesSearch = 
-          song.title.toLowerCase().includes(searchVal) || 
-          song.reqNo.toLowerCase().includes(searchVal);
+  // 1. 各タブの件数を計算して更新
+  const totalCount = songs.length;
+  const sungCount = songs.filter(s => s.sung).length;
+  const unsungCount = totalCount - sungCount;
 
-        return matchesFilter && matchesSearch;
-      });
+  document.getElementById('countAll').textContent = totalCount;
+  document.getElementById('countUnsung').textContent = unsungCount;
+  document.getElementById('countSung').textContent = sungCount;
 
-      filtered.forEach(song => {
-        const url = `https://www.clubdam.com/app/rankingbattle/Ranking.do?requestNo=${song.reqNo}`;
-        const card = document.createElement('div');
-        card.className = `song-card ${song.sung ? 'sung' : ''}`;
-        card.onclick = (e) => toggleSung(song.id, e);
+  // 2. リストの絞り込みと描画
+  const filtered = songs.filter(song => {
+    const matchesFilter = 
+      currentFilter === 'all' ? true :
+      currentFilter === 'sung' ? song.sung : !song.sung;
+    
+    const matchesSearch = 
+      song.title.toLowerCase().includes(searchVal) || 
+      song.reqNo.toLowerCase().includes(searchVal);
 
-        card.innerHTML = `
-          <div class="song-info">
-            <div class="song-title">${escapeHtml(song.title)}</div>
-            <div class="song-meta">No. ${escapeHtml(song.reqNo)}</div>
-          </div>
-          <div class="button-group">
-            <a href="${url}" target="_blank" class="dam-btn">DAM 🔗</a>
-            <button class="delete-btn" onclick="deleteSong('${song.id}', '${escapeHtml(song.title)}')">削除</button>
-          </div>
-        `;
-        listEl.appendChild(card);
-      });
-    }
+    return matchesFilter && matchesSearch;
+  });
+
+  filtered.forEach(song => {
+    const card = document.createElement('div');
+    card.className = `song-card ${song.sung ? 'sung' : ''}`;
+    card.onclick = (e) => toggleSung(song.id, e);
+
+    const damBtnHtml = song.reqNo 
+      ? `<a href="https://www.clubdam.com/app/rankingbattle/Ranking.do?requestNo=${encodeURIComponent(song.reqNo)}" target="_blank" rel="noopener noreferrer" class="dam-btn">DAM 🔗</a>`
+      : '';
+
+    card.innerHTML = `
+      <div class="song-info">
+        <div class="song-title">${escapeHtml(song.title)}</div>
+        <div class="song-meta">${song.reqNo ? 'No. ' + escapeHtml(song.reqNo) : 'No. なし'}</div>
+      </div>
+      <div class="button-group">
+        ${damBtnHtml}
+        <button class="delete-btn" onclick="deleteSong('${song.id}')">削除</button>
+      </div>
+    `;
+    listEl.appendChild(card);
+  });
+}
 
     function openAddModal() { document.getElementById('addModal').classList.add('open'); }
     function openImportModal() { document.getElementById('importModal').classList.add('open'); }
